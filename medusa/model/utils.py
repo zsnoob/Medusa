@@ -56,14 +56,16 @@ def generate_medusa_buffers(medusa_choices, device="cuda"):
         prev_depth = depth
     
     # Create the attention mask for Medusa
+    # Eye for every token itself attention
     medusa_attn_mask = torch.eye(medusa_len, medusa_len)
+    # root token will be attended by every token
     medusa_attn_mask[:, 0] = 1
     start = 0
     for i in range(len(depth_counts)):
         for j in range(depth_counts[i]):
             cur_medusa_choice = sorted_medusa_choices[start + j]
             # retrieve ancestor position
-            if len(cur_medusa_choice) == 1:
+            if len(cur_medusa_choice) == 1: # for depth = 1, itself and root are enough
                 continue
             ancestor_idx = []
             for c in range(len(cur_medusa_choice) - 1):

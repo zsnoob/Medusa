@@ -74,13 +74,13 @@ def generate_medusa_buffers(medusa_choices, device="cuda"):
         start += depth_counts[i]
 
     # Generate tree indices for the Medusa structure
-    medusa_tree_indices = torch.zeros(medusa_len, dtype=torch.long)
-    medusa_tree_indices[0] = 0
+    medusa_tree_indices = torch.zeros(medusa_len, dtype=torch.long) # 所有可能的解码树路径的索引 包含根节点
+    medusa_tree_indices[0] = 0 # 根的索引是0
     start = 0
-    for i in range(len(depth_counts)):
-        for j in range(depth_counts[i]):
-            cur_medusa_choice = sorted_medusa_choices[start + j]
-            medusa_tree_indices[start + j + 1] = cur_medusa_choice[-1] + TOPK * i + 1
+    for i in range(len(depth_counts)): # 对于每个深度
+        for j in range(depth_counts[i]): # 对每个深度上的节点
+            cur_medusa_choice = sorted_medusa_choices[start + j] # 选出一个路径
+            medusa_tree_indices[start + j + 1] = cur_medusa_choice[-1] + TOPK * i + 1 # 对于任意路径(位于sum(depth_count[0:i]) + j)的索引是深度*topk + 叶子节点在兄弟节点之间的索引
         start += depth_counts[i]
 
     # Generate position IDs for the Medusa structure
@@ -93,21 +93,22 @@ def generate_medusa_buffers(medusa_choices, device="cuda"):
     # Generate retrieval indices for Medusa structure verification
     retrieve_indices_nest = []
     retrieve_paths = []
-    for i in range(len(sorted_medusa_choices)):
-        cur_medusa_choice = sorted_medusa_choices[-i-1]
+    for i in range(len(sorted_medusa_choices)): # 对每一个解码树路径 没包含根节点
+        cur_medusa_choice = sorted_medusa_choices[-i-1] # 字典序反序遍历所有解码树路径
         retrieve_indice = []
-        if cur_medusa_choice in retrieve_paths:
+        if cur_medusa_choice in retrieve_paths: # 如果已经处理过一条路径(作为其它路径的祖先) 寻找独特路径
             continue
         else:
-            for c in range(len(cur_medusa_choice)):
-                retrieve_indice.append(sorted_medusa_choices.index(cur_medusa_choice[:c+1]))
+            for c in range(len(cur_medusa_choice)): # 处理该条路径及其所有祖先路径
+                retrieve_indice.append(sorted_medusa_choices.index(cur_medusa_choice[:c+1])) # 该indice包含所有祖先路径只到自身路径的所有chioce中索引
+                
                 retrieve_paths.append(cur_medusa_choice[:c+1])
-        retrieve_indices_nest.append(retrieve_indice)
+        retrieve_indices_nest.append(retrieve_indice) # 每一个嵌套索引的元素，包含一条独一无二的解码路径及其所有祖先
     max_length = max([len(x) for x in retrieve_indices_nest])
-    retrieve_indices = [pad_path(path, max_length) for path in retrieve_indices_nest]
+    retrieve_indices = [pad_path(path, max_length) for path in retrieve_indices_nest] # 让短路径和长路径元素数量一致，转化为方阵
     retrieve_indices = torch.tensor(retrieve_indices, dtype=torch.long)
     retrieve_indices = retrieve_indices + 1
-    retrieve_indices = torch.cat([torch.zeros((retrieve_indices.shape[0], 1), dtype=torch.long), retrieve_indices], dim=1)
+    retrieve_indices = torch.cat([torch.zeros((retrieve_indices.shape[0], 1), dtype=torch.long), retrieve_indices], dim=1) # 添加根节点作为所有索引的祖先，在第一列
 
     # Aggregate the generated buffers into a dictionary
     medusa_buffers = {
